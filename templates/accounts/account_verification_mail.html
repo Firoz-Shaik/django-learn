@@ -1,0 +1,10 @@
+{% autoescape off %}
+
+Hi {{ user.first_name }},
+
+Thank you for registering with us, Please click on the link below to verify your account.
+If this request was not made by you, please ignore this email.
+
+http://{{ domain }}{% url 'activate' uidb64=uid token=token %}
+
+{% endautoescape %}

@@ -20,10 +20,13 @@ from django.urls import path, include
 from .views import index
 from django.conf.urls.static import static
 from django.conf import settings
+from accounts.views import login
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path('', index, name='index'),
+    path('', login, name='login'),
+    path('admin/', admin.site.urls),
+    path('home/', index, name='index'),
     path('store/', include('store.urls')),
     path('cart/', include('carts.urls')),
+    path('accounts/', include('accounts.urls')),
     ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
