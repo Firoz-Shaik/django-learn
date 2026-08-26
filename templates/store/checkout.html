@@ -4,8 +4,9 @@
 
 <section class="section-content padding-y bg">
 <div class="container">
+{% include 'includes/alerts.html' %}
 <!-- ============================ COMPONENT 1 ================================= -->
-<form method="POST" action="{% url 'checkout' %}">
+<form method="POST" action="{% url 'place_order' %}">
 {% csrf_token %}
 <div class="row">
 	<aside class="col-lg-6">

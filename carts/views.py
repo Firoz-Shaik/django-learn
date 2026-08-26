@@ -5,6 +5,7 @@ from .forms import CheckoutForm
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from .stock import cart_quantity_for_product, stock_errors
 # Create your views here.
 
 
@@ -56,9 +57,22 @@ def add_to_cart(request, product_id):
                 pass
     current_user = request.user
     if current_user.is_authenticated:
-        is_cart_item_exists = CartItem.objects.filter(product=product, user=current_user).exists()
+        current_quantity = cart_quantity_for_product(product=product, user=current_user)
+        if not product.is_available:
+            messages.error(request, f'{product.product_name} is currently unavailable.')
+            return redirect('cart' if request.POST.get('return_to_cart') else 'product_detail',
+                            *([] if request.POST.get('return_to_cart') else [product.category.slug, product.slug]))
+        if current_quantity + 1 > product.stock:
+            messages.error(request, f'Only {product.stock} {product.product_name} item(s) are in stock.')
+            return redirect('cart' if request.POST.get('return_to_cart') else 'product_detail',
+                            *([] if request.POST.get('return_to_cart') else [product.category.slug, product.slug]))
+        is_cart_item_exists = CartItem.objects.filter(
+            product=product, user=current_user, is_active=True
+        ).exists()
         if is_cart_item_exists:
-            cart_items = CartItem.objects.filter(product=product, user=current_user)
+            cart_items = CartItem.objects.filter(
+                product=product, user=current_user, is_active=True
+            )
             existing_variations = []
             item_id = []
             for item in cart_items:
@@ -98,10 +112,26 @@ def add_to_cart(request, product_id):
         except Cart.DoesNotExist:
             cart = Cart.objects.create(cart_id=_cart_id(request))
             cart.save()
-        is_cart_item_exists = CartItem.objects.filter(product=product, cart=cart).exists()
+        current_quantity = cart_quantity_for_product(product=product, cart=cart)
+        if not product.is_available:
+            messages.error(request, f'{product.product_name} is currently unavailable.')
+            return redirect('cart' if request.POST.get('return_to_cart') else 'product_detail',
+                            *([] if request.POST.get('return_to_cart') else [product.category.slug, product.slug]))
+        if current_quantity + 1 > product.stock:
+            if product.stock == 0:
+                messages.error(request, f'{product.product_name} is currently unavailable.')
+            else:
+                messages.error(request, f'Only {product.stock} {product.product_name} item(s) are in stock.')
+            return redirect('cart' if request.POST.get('return_to_cart') else 'product_detail',
+                            *([] if request.POST.get('return_to_cart') else [product.category.slug, product.slug]))
+        is_cart_item_exists = CartItem.objects.filter(
+            product=product, cart=cart, is_active=True
+        ).exists()
 
         if is_cart_item_exists:
-            cart_items = CartItem.objects.filter(product=product, cart=cart)
+            cart_items = CartItem.objects.filter(
+                product=product, cart=cart, is_active=True
+            )
             existing_variations = []
             item_id = []
             for item in cart_items:
@@ -140,7 +170,7 @@ def cart(request, total=0, quantity=0, cart_items=None):
     grand_total = 0
     try:
         if request.user.is_authenticated:
-            cart_items = CartItem.objects.filter(user=request.user)
+            cart_items = CartItem.objects.filter(user=request.user, is_active=True)
         else:
             cart = Cart.objects.get(cart_id=_cart_id(request))
             cart_items = CartItem.objects.filter(cart=cart, is_active=True)
@@ -162,7 +192,8 @@ def cart(request, total=0, quantity=0, cart_items=None):
 
 @login_required
 def checkout(request):
-    form = CheckoutForm(request.POST or None)
+    saved_checkout_data = request.session.get('checkout_data', {})
+    form = CheckoutForm(request.POST or None, initial=saved_checkout_data)
     total = 0
     quantity = 0
     tax = 0
@@ -181,7 +212,13 @@ def checkout(request):
     except ObjectDoesNotExist:
         pass
     if request.method == 'POST' and form.is_valid():
-        messages.success(request, 'Billing details received. Your order is ready to place.')
+        stock_messages = stock_errors(cart_items)
+        if stock_messages:
+            for message in stock_messages:
+                form.add_error(None, message)
+        else:
+            request.session['checkout_data'] = form.cleaned_data
+            messages.success(request, 'Billing details received. Your order is ready to place.')
     context = {
         'form': form,
         'total': total,

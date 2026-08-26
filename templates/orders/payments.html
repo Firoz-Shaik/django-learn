@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+
+<section class="section-content padding-y bg">
+<div class="container">
+<form method="post" action="{% url 'payments' %}" id="payment-form">
+{% csrf_token %}
+<div class="row">
+	<div class="col-lg-7">
+		<div class="card mb-3">
+			<div class="card-body">
+				<h4 class="card-title mb-4">Billing address</h4>
+				<address class="mb-0">
+					<strong>{{ order.full_name }}</strong><br>
+					{{ order.address_line_1 }}{% if order.address_line_2 %}, {{ order.address_line_2 }}{% endif %}<br>
+					{{ order.city }}, {{ order.state }} {{ order.zip_code }}<br>
+					{{ order.country }}<br>
+					<abbr title="Phone">P:</abbr> {{ order.phone }}<br>
+					{{ order.email }}
+				</address>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-body">
+				<h4 class="card-title mb-4">Review products</h4>
+				{% for item in cart_items %}
+				<div class="media mb-3">
+					<img src="{{ item.product.images.url }}" class="img-sm mr-3" alt="{{ item.product.product_name }}">
+					<div class="media-body">
+						<h6 class="mb-1">{{ item.product.product_name }}</h6>
+						<p class="text-muted small mb-1">Quantity: {{ item.quantity }}</p>
+						{% for variation in item.variations.all %}
+							<span class="text-muted small">{{ variation.variation_category|capfirst }}: {{ variation.variation_value|capfirst }}</span>{% if not forloop.last %}, {% endif %}
+						{% endfor %}
+					</div>
+					<strong>$ {{ item.sub_total }}</strong>
+				</div>
+				{% empty %}
+					<p class="text-muted mb-0">Your cart is empty.</p>
+				{% endfor %}
+			</div>
+		</div>
+	</div>
+
+	<div class="col-lg-5">
+		<div class="card mb-3">
+			<div class="card-body">
+				<h4 class="card-title mb-4">Payment method</h4>
+				{% include 'includes/alerts.html' %}
+				<div class="custom-control custom-radio mb-3">
+					<input type="radio" id="card" name="payment_method" value="card" class="custom-control-input" checked>
+					<label class="custom-control-label" for="card">Credit or debit card</label>
+				</div>
+				<div class="custom-control custom-radio mb-3">
+					<input type="radio" id="cod" name="payment_method" value="cod" class="custom-control-input">
+					<label class="custom-control-label" for="cod">Cash on delivery</label>
+				</div>
+				<div class="custom-control custom-radio mb-3">
+					<input type="radio" id="paypal" name="payment_method" value="paypal" class="custom-control-input" disabled>
+					<label class="custom-control-label text-muted" for="paypal">PayPal (not configured)</label>
+				</div>
+				<small class="form-text text-muted">Stripe test mode is active. Use Stripe's test card details.</small>
+			</div>
+		</div>
+
+		<div class="card mb-3" id="card-details">
+			<div class="card-body">
+				<h5 class="mb-3">Payment details</h5>
+				<div id="card-element" style="min-height: 42px; border: 1px solid #ced4da; border-radius: .25rem; padding: .75rem;"></div>
+				<div id="card-errors" class="invalid-feedback d-block" role="alert"></div>
+			</div>
+		</div>
+
+		<div class="card">
+			<div class="card-body">
+				<dl class="dlist-align"><dt>Subtotal:</dt><dd class="text-right">$ {{ total|floatformat:2 }}</dd></dl>
+				<dl class="dlist-align"><dt>Tax:</dt><dd class="text-right">$ {{ tax|floatformat:2 }}</dd></dl>
+				<hr>
+				<dl class="dlist-align"><dt><strong>Total:</strong></dt><dd class="text-right text-dark"><strong>$ {{ grand_total|floatformat:2 }}</strong></dd></dl>
+				<button type="submit" class="btn btn-primary btn-block mt-3" id="submit-payment"><span id="submit-payment-label">Make payment</span></button>
+				{% if not stripe_publishable_key %}<small class="text-danger d-block mt-2">Stripe is not configured. Add STRIPE_PUBLISHABLE_KEY to the environment.</small>{% endif %}
+				<a href="{% url 'checkout' %}" class="btn btn-light btn-block">Back to billing</a>
+			</div>
+		</div>
+	</div>
+</div>
+</form>
+</div> <!-- container .//  -->
+</section>
+
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+const paymentForm = document.getElementById('payment-form');
+const stripeKey = '{{ stripe_publishable_key|escapejs }}';
+
+if (paymentForm) {
+	let stripe;
+	let card;
+	if (stripeKey) {
+		stripe = Stripe(stripeKey);
+		const elements = stripe.elements();
+		card = elements.create('card', {hidePostalCode: true});
+		card.mount('#card-element');
+		card.on('change', (event) => {
+			document.getElementById('card-errors').textContent = event.error ? event.error.message : '';
+		});
+	}
+
+	const csrfToken = paymentForm.querySelector('[name=csrfmiddlewaretoken]').value;
+	const body = (fields) => new URLSearchParams({csrfmiddlewaretoken: csrfToken, ...fields});
+	const cardDetails = document.getElementById('card-details');
+	const submitLabel = document.getElementById('submit-payment-label');
+	const paymentOptions = paymentForm.querySelectorAll('input[name="payment_method"]');
+	const updatePaymentMethod = () => {
+		const selected = paymentForm.querySelector('input[name="payment_method"]:checked').value;
+		cardDetails.style.display = selected === 'card' ? '' : 'none';
+		submitLabel.textContent = selected === 'cod' ? 'Place order' : 'Make payment';
+	};
+	paymentOptions.forEach((option) => option.addEventListener('change', updatePaymentMethod));
+	updatePaymentMethod();
+
+	paymentForm.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		const button = document.getElementById('submit-payment');
+		const errorBox = document.getElementById('card-errors');
+		const paymentMethod = paymentForm.querySelector('input[name="payment_method"]:checked').value;
+		button.disabled = true;
+		errorBox.textContent = '';
+		if (paymentMethod === 'cod') {
+			const codBody = body({action: 'complete_cod', payment_method: 'cod'});
+			try {
+				const codResponse = await fetch(paymentForm.action, {method: 'POST', body: codBody});
+				const codData = await codResponse.json();
+				if (!codResponse.ok) throw new Error(codData.error || 'Unable to place the cash-on-delivery order.');
+				window.location.href = codData.redirect_url;
+			} catch (error) {
+				errorBox.textContent = error.message;
+				button.disabled = false;
+			}
+			return;
+		}
+
+		try {
+			if (!stripe || !card) throw new Error('Stripe card payments are not configured.');
+			if (!'{{ country_code|escapejs }}') throw new Error('A valid billing country is required. Return to checkout and enter a country such as India.');
+			const intentResponse = await fetch(paymentForm.action, {
+				method: 'POST',
+				headers: {'X-Requested-With': 'XMLHttpRequest'},
+				body: body({action: 'create_payment_intent', payment_method: paymentMethod})
+			});
+			const intentData = await intentResponse.json();
+			if (!intentResponse.ok) throw new Error(intentData.error || 'Unable to start payment.');
+
+			const result = await stripe.confirmCardPayment(intentData.client_secret, {
+				payment_method: {card: card, billing_details: {
+					name: '{{ order.full_name|escapejs }}',
+					email: '{{ order.email|escapejs }}',
+					address: {
+						line1: '{{ order.address_line_1|escapejs }}',
+						line2: '{{ order.address_line_2|escapejs }}',
+						city: '{{ order.city|escapejs }}',
+						state: '{{ order.state|escapejs }}',
+						postal_code: '{{ order.zip_code|escapejs }}',
+						country: '{{ country_code|escapejs }}'
+					}
+				}}
+			});
+			if (result.error) throw new Error(result.error.message);
+
+			const confirmationResponse = await fetch(paymentForm.action, {
+				method: 'POST',
+				headers: {'X-Requested-With': 'XMLHttpRequest'},
+				body: body({action: 'confirm_payment', payment_intent_id: result.paymentIntent.id})
+			});
+			const confirmationData = await confirmationResponse.json();
+			if (!confirmationResponse.ok) throw new Error(confirmationData.error || 'Unable to confirm payment.');
+			window.location.href = confirmationData.redirect_url;
+		} catch (error) {
+			errorBox.textContent = error.message;
+			button.disabled = false;
+		}
+	});
+}
+</script>
+
+{% endblock %}

@@ -4,6 +4,7 @@
 
 <section class="section-content padding-y bg">
 <div class="container">
+{% include 'includes/alerts.html' %}
 
 <!-- ============================ COMPONENT 1 ================================= -->
 <div class="card">
@@ -56,7 +57,7 @@
         </div> <!-- row.// -->
         <hr>
         {% if single_product.stock <= 0 or not single_product.is_available %}
-        <a href="#" class="btn  btn-danger"> <span class="text">Out of stock</span> <i class="fas fa-shopping-cart"></i>  </a>
+        <button type="button" class="btn btn-danger" disabled> <span class="text">Out of stock</span> <i class="fas fa-shopping-cart"></i> </button>
         {% else %}
             <button type="submit" class="btn  btn-primary"> <span class="text">Add to cart</span> <i class="fas fa-shopping-cart"></i>  </button>
         {% endif %}

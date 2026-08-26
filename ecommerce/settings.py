@@ -23,6 +23,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-ht#htr!*^ed@m9#y_p=lh663e(&-8ba8x!+!pc46r@f%)x7m(n"
 
+# Stripe test-mode keys. Set these in the environment; do not commit real keys.
+STRIPE_PUBLISHABLE_KEY = "pk_test_51PKDxNSCkksKuVqhqgGr8YBwJfBHXvySpIALkRIcZGJlKNgQtLaWufrU0DW1n5KHf3aZnayTw6N5RvHNBCl1cXQo00Ku7hmTam"
+STRIPE_SECRET_KEY = "sk_test_51PKDxNSCkksKuVqhq3B92q1oVRVpzJBZHnH1n7fIkpWcQ55lwn7GjWJz2QdSLFpEr28z6YRqStQ9Xofa9Ocuz67e00C0CWGKob"
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -43,6 +47,7 @@ INSTALLED_APPS = [
     "accounts",
     "store",
     "carts",
+    "orders",
 ]
 
 MIDDLEWARE = [

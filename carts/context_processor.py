@@ -9,7 +9,7 @@ def counter(request):
     total_quantity = 0
     try:
         if request.user.is_authenticated:
-            cart_items = CartItem.objects.filter(user=request.user)
+            cart_items = CartItem.objects.filter(user=request.user, is_active=True)
             total_quantity = sum(item.quantity for item in cart_items)
         else:
             cart_id = _cart_id(request)
