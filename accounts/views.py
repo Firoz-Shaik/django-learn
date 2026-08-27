@@ -1,8 +1,9 @@
 import requests
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .forms import RegistrationForm
-from .models import Account
+from .forms import RegistrationForm, UserForm, UserProfileForm, ChangePasswordForm
+from .models import Account, UserProfile
+from orders.models import Order
 from django.contrib import auth, messages
 from django.contrib.sites.shortcuts import get_current_site
 from django.template.loader import render_to_string
@@ -28,6 +29,11 @@ def register(request):
             user = Account.objects.create_user(first_name=first_name, last_name=last_name, email=email, username=username, phone_number=phone_number, password=password)
             user.save()
 
+            #Add user to User Profile
+            profile = UserProfile()
+            profile.user = user
+            profile.profile_picture = 'default/default-user.png'
+            profile.save()
             # User activation
             current_site = get_current_site(request)
             mail_subject = 'Please activate your account'
@@ -181,4 +187,53 @@ def reset_password(request):
         return render(request, "accounts/reset_password.html")
 @login_required(login_url='login')
 def dashboard(request):
-    return render(request, "accounts/dashboard.html")
+    orders = Order.objects.filter(user=request.user, is_ordered=True)
+    orders_count = orders.count()
+    userprofile = get_object_or_404(UserProfile, user=request.user)
+    context = {
+        'orders_count': orders_count,
+        'userprofile': userprofile
+    }
+    return render(request, "accounts/dashboard.html", context)
+
+
+@login_required(login_url='login')
+def edit_profile(request):
+    userprofile = get_object_or_404(UserProfile, user=request.user)
+    if request.method == 'POST':
+        user_form = UserForm(request.POST, instance=request.user)
+        profile_form = UserProfileForm(request.POST, request.FILES, instance=userprofile)
+        if user_form.is_valid() and profile_form.is_valid():
+            user_form.save()
+            profile_form.save()
+            messages.success(request, 'Your profile has been updated.')
+            return redirect('edit_profile')
+        else:
+            messages.error(request, 'Please correct the errors.')
+            return render(request, "accounts/edit_profile.html", {
+                'user_form': user_form,
+                'profile_form': profile_form,
+                'userprofile': userprofile,
+            })
+    else:
+        user_form = UserForm(instance=request.user)
+        profile_form = UserProfileForm(instance=userprofile)
+        context = {
+            'user_form': user_form,
+            'profile_form': profile_form,
+            'userprofile': userprofile
+        }
+        return render(request, "accounts/edit_profile.html", context)
+@login_required(login_url='login')
+def change_password(request):
+    form = ChangePasswordForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            if not request.user.check_password(form.cleaned_data['current_password']):
+                form.add_error('current_password', 'The current password is incorrect.')
+            else:
+                request.user.set_password(form.cleaned_data['new_password'])
+                request.user.save(update_fields=['password'])
+                messages.success(request, 'Password updated successfully.')
+                return redirect('login')
+    return render(request, "accounts/change_password.html", {'form': form})

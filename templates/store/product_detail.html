@@ -12,8 +12,14 @@
 		<aside class="col-md-6">
 <article class="gallery-wrap"> 
 	<div class="img-big-wrap">
-	   <a href="#"><img src="{{ single_product.images.url }}"></a>
+       {% with first_image=product_gallery|first %}
+       {% if first_image %}<a href="{{ first_image.image.url }}" target="_blank"><img id="gallery-main-image" src="{{ first_image.image.url }}" alt="{{ single_product.product_name }}"></a>
+       {% elif single_product.images %}<a href="{{ single_product.images.url }}" target="_blank"><img id="gallery-main-image" src="{{ single_product.images.url }}" alt="{{ single_product.product_name }}"></a>{% endif %}
+       {% endwith %}
 	</div> <!-- img-big-wrap.// -->
+    <div class="gallery-thumbs mt-3">
+       {% for gallery_image in product_gallery %}<button type="button" class="gallery-thumb" data-image-url="{{ gallery_image.image.url }}"><img src="{{ gallery_image.image.url }}" alt="{{ single_product.product_name }} thumbnail"></button>{% endfor %}
+    </div>
 	
 </article> <!-- gallery-wrap .end// -->
 		</aside>
@@ -76,28 +82,58 @@
 
 	<header class="section-heading">
 		<h3>Customer Reviews </h3>  
-		
+        <div class="average-review" aria-label="{{ average_rating|floatformat:1 }} out of 5 stars"><div class="review-stars" data-rating="{{ average_rating }}"><span>&#9733;&#9733;&#9733;&#9733;&#9733;</span><b>&#9733;&#9733;&#9733;&#9733;&#9733;</b></div><small class="text-muted">{{ average_rating|floatformat:1 }}/5 ({{ review_count }} review{{ review_count|pluralize }})</small></div>
 	</header>
+    {% for review in product_reviews %}
+    <article class="box mb-3">
+        <div class="icontext w-100">
+            <div class="text">
+                <span class="date text-muted float-md-right">{{ review.updated_at|date:"M j, Y" }}</span>
+                <h6 class="mb-1">{{ review.user.full_name|default:review.user.username }}</h6>
+                <div class="review-stars" data-rating="{{ review.rating }}" aria-label="{{ review.rating }} out of 5 stars"><span>&#9733;&#9733;&#9733;&#9733;&#9733;</span><b>&#9733;&#9733;&#9733;&#9733;&#9733;</b></div>
+            </div>
+        </div>
+        <div class="mt-3">
+            {% if review.subject %}<h6>{{ review.subject }}</h6>{% endif %}
+            <p class="mb-0">{{ review.review }}</p>
+        </div>
+    </article>
+    {% empty %}
+    <p class="text-muted">No reviews yet.</p>
+    {% endfor %}
 
-	<article class="box mb-3">
-		<div class="icontext w-100">
-			<img src="./images/avatars/avatar1.jpg" class="img-xs icon rounded-circle">
-			<div class="text">
-				<span class="date text-muted float-md-right">24.04.2020 </span>  
-				<h6 class="mb-1">Mike John </h6>
-				
-			</div>
-		</div> <!-- icontext.// -->
-		<div class="mt-3">
-			<p>
-				Dummy comment Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod
-				tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam,
-				quis nostrud exercitation ullamco laboris nisi ut aliquip
-			</p>	
-		</div>
-	</article>
-
-	
+    {% if ordered_products %}
+    <div class="card mb-3">
+        <div class="card-body">
+            {% if user_review %}
+            <p class="text-muted">You have already shared your experience. You can update your review below.</p>
+            {% else %}
+            <p class="text-muted">You purchased this product. Would you like to share your experience?</p>
+            {% endif %}
+            <h5>{% if user_review %}Update your review{% else %}Write a review{% endif %}</h5>
+            <form action="{% url 'submit_review' single_product.id %}" method="post">
+                {% csrf_token %}
+                <div class="form-group"><label for="subject">Subject</label><input class="form-control" id="subject" name="subject" maxlength="100" value="{{ user_review.subject|default:'' }}"></div>
+                <div class="form-group">
+                    <label>Rating</label>
+                    <div class="star-picker" data-saved-rating="{{ user_review.rating|default:'0' }}" role="radiogroup" aria-label="Choose a rating">
+                        <span class="star-picker-base">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+                        <span class="star-picker-saved">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+                        <span class="star-picker-hover">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+                        <button type="button" class="star-hit" data-star="1" aria-label="Choose first star"></button>
+                        <button type="button" class="star-hit" data-star="2" aria-label="Choose second star"></button>
+                        <button type="button" class="star-hit" data-star="3" aria-label="Choose third star"></button>
+                        <button type="button" class="star-hit" data-star="4" aria-label="Choose fourth star"></button>
+                        <button type="button" class="star-hit" data-star="5" aria-label="Choose fifth star"></button>
+                        <input type="hidden" name="rating" value="{{ user_review.rating|default:'' }}" required>
+                    </div>
+                </div>
+                <div class="form-group"><label for="review">Review</label><textarea class="form-control" id="review" name="review" rows="4" required>{{ user_review.review|default:'' }}</textarea></div>
+                <button type="submit" class="btn btn-primary">{% if user_review %}Update review{% else %}Submit review{% endif %}</button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
 	</div> <!-- col.// -->
 </div> <!-- row.// -->
@@ -105,5 +141,66 @@
 
 </div> <!-- container .//  -->
 </section>
+
+<style>
+.review-stars { position: relative; display: inline-block; color: #d9dee3; letter-spacing: 2px; }
+.review-stars span { position: absolute; left: 0; top: 0; overflow: hidden; color: #f5a623; white-space: nowrap; }
+.review-stars b { font-weight: normal; }
+.star-picker { position: relative; display: inline-block; width: 185px; height: 38px; letter-spacing: 2px; }
+.star-picker-base, .star-picker-saved, .star-picker-hover { position: absolute; left: 0; top: 0; overflow: hidden; white-space: nowrap; font-size: 2rem; line-height: 1; }
+.star-picker-base { color: #d9dee3; width: 100%; }
+.star-picker-saved { color: #b87918; width: 0; }
+.star-picker-hover { color: #f5a623; width: 0; }
+.star-hit { position: absolute; top: 0; z-index: 2; display: block; width: 20%; height: 38px; padding: 0; border: 0; background: transparent; cursor: pointer; outline: none !important; box-shadow: none !important; -webkit-appearance: none; appearance: none; }
+.star-hit[data-star="1"] { left: 0; }
+.star-hit[data-star="2"] { left: 20%; }
+.star-hit[data-star="3"] { left: 40%; }
+.star-hit[data-star="4"] { left: 60%; }
+.star-hit[data-star="5"] { left: 80%; }
+.star-hit:hover, .star-hit:focus, .star-hit:focus-visible, .star-hit:active { outline: none !important; box-shadow: none !important; border: 0; }
+.average-review { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.gallery-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.gallery-thumb { padding: 2px; border: 1px solid #dee2e6; background: #fff; cursor: pointer; }
+.gallery-thumb img { width: 64px; height: 64px; object-fit: cover; }
+.gallery-thumb:focus, .gallery-thumb:focus-visible { outline: 2px solid #007bff; }
+</style>
+<script>
+document.querySelectorAll('.gallery-thumb').forEach((thumb) => {
+    thumb.addEventListener('click', () => {
+        const mainImage = document.getElementById('gallery-main-image');
+        if (mainImage) mainImage.src = thumb.dataset.imageUrl;
+    });
+});
+document.querySelectorAll('.review-stars').forEach((stars) => {
+    const rating = Number(stars.dataset.rating);
+    stars.querySelector('span').style.width = `${rating / 5 * 100}%`;
+});
+document.querySelectorAll('.star-picker').forEach((picker) => {
+    const savedStars = picker.querySelector('.star-picker-saved');
+    const hoverStars = picker.querySelector('.star-picker-hover');
+    const ratingInput = picker.querySelector('input[name="rating"]');
+    const savedRating = Number(picker.dataset.savedRating || 0);
+    savedStars.style.width = `${savedRating / 5 * 100}%`;
+    const getRating = (event) => {
+        const bounds = picker.getBoundingClientRect();
+        const position = Math.max(0, Math.min(event.clientX - bounds.left, bounds.width));
+        return Math.min(5, Math.max(0.5, Math.ceil(position / (bounds.width / 10)) / 2));
+    };
+    picker.querySelectorAll('.star-hit').forEach((star) => {
+        const setPreview = (event) => {
+            hoverStars.style.width = `${getRating(event) / 5 * 100}%`;
+        };
+        star.addEventListener('mousemove', setPreview);
+        star.addEventListener('mouseenter', setPreview);
+        star.addEventListener('click', (event) => {
+            ratingInput.value = getRating(event);
+            hoverStars.style.width = `${Number(ratingInput.value) / 5 * 100}%`;
+        });
+    });
+    picker.addEventListener('mouseleave', () => {
+        hoverStars.style.width = ratingInput.value ? `${Number(ratingInput.value) / 5 * 100}%` : '0';
+    });
+});
+</script>
 
 {% endblock %}

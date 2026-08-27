@@ -134,7 +134,7 @@
 	<div class="col-md-4">
 		<figure class="card card-product-grid">
 			<div class="img-wrap"> 
-				<a href="{{ product.get_url }}"> <img src="{{ product.images.url }}"> </a>
+				<a href="{{ product.get_url }}">{% if product.get_primary_image %}<img src="{{ product.get_primary_image.url }}" alt="{{ product.product_name }}">{% endif %}</a>
 			</div> <!-- img-wrap.// -->
 			<figcaption class="info-wrap">
 				<div class="fix-height">

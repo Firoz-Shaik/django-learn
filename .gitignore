@@ -130,6 +130,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -160,3 +162,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+#MD files
+POSTGRES_SETUP.md

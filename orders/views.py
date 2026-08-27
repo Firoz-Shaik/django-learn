@@ -132,10 +132,20 @@ def place_order(request):
 @login_required
 def payments(request):
     order_id = request.session.get('pending_order_id')
-    order = get_object_or_404(Order, id=order_id, user=request.user, is_ordered=False)
+    if not order_id and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'error': 'Your checkout session has expired. Please return to checkout.'}, status=400)
+    order = Order.objects.filter(
+        id=order_id, user=request.user, is_ordered=False
+    ).select_related('payment').first()
+    if order is None:
+        if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': 'This checkout session is no longer active. Please start checkout again.'}, status=400)
+        return redirect('checkout')
     cart_items = CartItem.objects.filter(user=request.user, is_active=True).select_related('product')
 
     if not cart_items.exists():
+        if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': 'Your cart is empty. Please add an item and try again.'}, status=400)
         return redirect('store')
 
     country_code = get_country_code(order.country)
@@ -294,7 +304,7 @@ def payments(request):
                         request.session.pop('checkout_data', None)
 
                     #Send order received email to the customer
-                    mail_subject = 'Order Places Successfully'
+                    mail_subject = 'Order Placed Successfully'
                     message = render_to_string('orders/order_received_email.html', {
                         'user': request.user,
                         'order': order,
@@ -346,4 +356,22 @@ def order_complete(request):
 
 
 def orders(request):
-    return render(request, "orders/orders.html")
+    orders = Order.objects.filter(user=request.user, is_ordered=True).order_by('-created_at')
+    context = {
+        'orders': orders
+    }
+    return render(request, "orders/orders.html", context)
+
+def order_details(request, order_id):
+    order_detail = OrderProduct.objects.filter(order__order_number=order_id)
+    order = Order.objects.get(order_number=order_id)
+    sub_total = 0
+    for item in order_detail:
+        order_product = OrderProduct.objects.get(id=item.id)
+        sub_total += order_product.subtotal()
+    context = {
+        'order_detail': order_detail,
+        'order': order,
+        'sub_total': sub_total
+    }
+    return render(request, "orders/order_details.html", context)

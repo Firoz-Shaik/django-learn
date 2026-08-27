@@ -32,7 +32,7 @@
 <tr>
 	<td>
 		<figure class="itemside align-items-center">
-			<div class="aside"><img src="{{ item.product.images.url }}" class="img-sm"></div>
+			<div class="aside">{% if item.product.get_primary_image %}<img src="{{ item.product.get_primary_image.url }}" class="img-sm" alt="{{ item.product.product_name }}">{% endif %}</div>
 			<figcaption class="info">
 				<a href="{{ item.product.get_url }}" class="title text-dark">{{ item.product.product_name }}</a>
 				<p class="text-muted small">

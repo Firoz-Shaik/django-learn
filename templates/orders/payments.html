@@ -27,7 +27,7 @@
 				<h4 class="card-title mb-4">Review products</h4>
 				{% for item in cart_items %}
 				<div class="media mb-3">
-					<img src="{{ item.product.images.url }}" class="img-sm mr-3" alt="{{ item.product.product_name }}">
+					{% if item.product.get_primary_image %}<img src="{{ item.product.get_primary_image.url }}" class="img-sm mr-3" alt="{{ item.product.product_name }}">{% endif %}
 					<div class="media-body">
 						<h6 class="mb-1">{{ item.product.product_name }}</h6>
 						<p class="text-muted small mb-1">Quantity: {{ item.quantity }}</p>
@@ -110,6 +110,13 @@ if (paymentForm) {
 
 	const csrfToken = paymentForm.querySelector('[name=csrfmiddlewaretoken]').value;
 	const body = (fields) => new URLSearchParams({csrfmiddlewaretoken: csrfToken, ...fields});
+	const readJson = async (response) => {
+		const contentType = response.headers.get('content-type') || '';
+		if (!contentType.includes('application/json')) {
+			throw new Error(`Payment request failed (HTTP ${response.status}). Refresh the page and restart checkout.`);
+		}
+		return response.json();
+	};
 	const cardDetails = document.getElementById('card-details');
 	const submitLabel = document.getElementById('submit-payment-label');
 	const paymentOptions = paymentForm.querySelectorAll('input[name="payment_method"]');
@@ -132,7 +139,7 @@ if (paymentForm) {
 			const codBody = body({action: 'complete_cod', payment_method: 'cod'});
 			try {
 				const codResponse = await fetch(paymentForm.action, {method: 'POST', body: codBody});
-				const codData = await codResponse.json();
+				const codData = await readJson(codResponse);
 				if (!codResponse.ok) throw new Error(codData.error || 'Unable to place the cash-on-delivery order.');
 				window.location.href = codData.redirect_url;
 			} catch (error) {
@@ -150,7 +157,7 @@ if (paymentForm) {
 				headers: {'X-Requested-With': 'XMLHttpRequest'},
 				body: body({action: 'create_payment_intent', payment_method: paymentMethod})
 			});
-			const intentData = await intentResponse.json();
+			const intentData = await readJson(intentResponse);
 			if (!intentResponse.ok) throw new Error(intentData.error || 'Unable to start payment.');
 
 			const result = await stripe.confirmCardPayment(intentData.client_secret, {
@@ -174,7 +181,7 @@ if (paymentForm) {
 				headers: {'X-Requested-With': 'XMLHttpRequest'},
 				body: body({action: 'confirm_payment', payment_intent_id: result.paymentIntent.id})
 			});
-			const confirmationData = await confirmationResponse.json();
+			const confirmationData = await readJson(confirmationResponse);
 			if (!confirmationResponse.ok) throw new Error(confirmationData.error || 'Unable to confirm payment.');
 			window.location.href = confirmationData.redirect_url;
 		} catch (error) {
