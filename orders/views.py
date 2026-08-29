@@ -3,20 +3,24 @@ from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
-from carts.models import CartItem
-from orders.models import Order,Payment,OrderProduct
-from store.models import Product
+from orders.models import Order, Payment
 from carts.forms import CheckoutForm
 from datetime import date
-from django.template.loader import render_to_string
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 from carts.stock import stock_errors
-from django.core.mail import EmailMessage
+from carts.totals import cart_totals
+from carts.views import _active_cart_items
 from django.urls import reverse
 from urllib.parse import urlencode
+from orders.coupons import coupon_from_session
+from orders.services import (
+    cancel_order as cancel_placed_order,
+    fulfill_order,
+    locked_skus_for_cart,
+)
 
 
-# Create your views here.
 COUNTRY_CODES = {
     'india': 'IN',
     'united states': 'US',
@@ -50,24 +54,25 @@ def order_complete_url(order, payment):
     })
     return f'{reverse("order_complete")}?{query}'
 
+
+def _checkout_page(request, form, cart_items):
+    totals = cart_totals(cart_items, coupon_from_session(request))
+    return render(request, 'store/checkout.html', {
+        'form': form,
+        'cart_items': cart_items,
+        **totals,
+    })
+
+
 @login_required
 def place_order(request):
     current_user = request.user
-
-    cart_items = CartItem.objects.filter(user=current_user, is_active=True)
-    cart_count = cart_items.count()
-    if cart_count <= 0:
+    cart_items = _active_cart_items(request)
+    if not cart_items.exists():
         return redirect('store')
 
-    total = 0
-    quantity = 0
-    grand_total = 0
-    tax = 0
-    for item in cart_items:
-        total += (item.product.price * item.quantity)
-        quantity += item.quantity
-    tax = (12 * total) / 100
-    grand_total = total + tax
+    coupon = coupon_from_session(request)
+    totals = cart_totals(cart_items, coupon)
 
     if request.method == 'POST':
         form = CheckoutForm(request.POST)
@@ -76,14 +81,7 @@ def place_order(request):
             form.is_valid()
             for message in current_stock_errors:
                 form.add_error(None, message)
-            return render(request, "store/checkout.html", {
-                'form': form,
-                'total': total,
-                'quantity': quantity,
-                'cart_items': cart_items,
-                'tax': tax,
-                'grand_total': grand_total,
-            })
+            return _checkout_page(request, form, cart_items)
         if form.is_valid():
             request.session['checkout_data'] = form.cleaned_data
             pending_order_id = request.session.get('pending_order_id')
@@ -101,8 +99,10 @@ def place_order(request):
             data.city = form.cleaned_data['city']
             data.zip_code = form.cleaned_data['zip_code']
             data.order_note = form.cleaned_data['order_note']
-            data.order_total = grand_total
-            data.tax = tax
+            data.order_total = totals['grand_total']
+            data.tax = totals['tax']
+            data.discount = totals['discount']
+            data.coupon = coupon
             data.ip = request.META.get('REMOTE_ADDR')
             data.user = current_user
             data.save()
@@ -116,19 +116,11 @@ def place_order(request):
             request.session['pending_order_id'] = data.id
             return redirect('payments')
 
-        return render(request, "store/checkout.html", {
-            'form': form,
-            'total': total,
-            'quantity': quantity,
-            'cart_items': cart_items,
-            'tax': tax,
-            'grand_total': grand_total,
-        })
+        return _checkout_page(request, form, cart_items)
 
     return redirect('checkout')
 
 
-    
 @login_required
 def payments(request):
     order_id = request.session.get('pending_order_id')
@@ -136,12 +128,12 @@ def payments(request):
         return JsonResponse({'error': 'Your checkout session has expired. Please return to checkout.'}, status=400)
     order = Order.objects.filter(
         id=order_id, user=request.user, is_ordered=False
-    ).select_related('payment').first()
+    ).select_related('payment', 'coupon').first()
     if order is None:
         if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'error': 'This checkout session is no longer active. Please start checkout again.'}, status=400)
         return redirect('checkout')
-    cart_items = CartItem.objects.filter(user=request.user, is_active=True).select_related('product')
+    cart_items = _active_cart_items(request)
 
     if not cart_items.exists():
         if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -159,13 +151,8 @@ def payments(request):
             if current_stock_errors:
                 return JsonResponse({'error': ' '.join(current_stock_errors)}, status=409)
             with transaction.atomic():
-                locked_products = {
-                    product.id: product
-                    for product in Product.objects.select_for_update().filter(
-                        id__in=cart_items.values_list('product_id', flat=True)
-                    )
-                }
-                current_stock_errors = stock_errors(cart_items, locked_products)
+                locked = locked_skus_for_cart(cart_items)
+                current_stock_errors = stock_errors(cart_items, locked)
                 if current_stock_errors:
                     return JsonResponse({'error': ' '.join(current_stock_errors)}, status=409)
                 payment = Payment.objects.create(
@@ -175,31 +162,15 @@ def payments(request):
                     amount_paid=str(order.order_total),
                     status='Pending',
                 )
-                quantities = {}
                 order.payment = payment
                 order.is_ordered = True
                 order.save(update_fields=['payment', 'is_ordered', 'updated_at'])
-                for item in cart_items:
-                    quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
-                    order_product = OrderProduct.objects.create(
-                        order=order, payment=payment, user=request.user,
-                        product=item.product, quantity=item.quantity,
-                        product_price=item.product.price, ordered=True,
-                    )
-                    order_product.variation.set(item.variations.all())
-                for product_id, quantity in quantities.items():
-                    locked_products[product_id].stock -= quantity
-                    locked_products[product_id].save(update_fields=['stock'])
-                cart_items.update(is_active=False)
-            request.session.pop('pending_order_id', None)
-            request.session.pop('checkout_data', None)
+                fulfill_order(request, order, payment, cart_items)
             return JsonResponse({'redirect_url': order_complete_url(order, payment)})
 
         if payment_method == 'paypal':
             return JsonResponse({'error': 'PayPal is not configured yet.'}, status=501)
 
-        if stripe is None:
-            return JsonResponse({'error': 'The Stripe SDK is not installed on the server.'}, status=503)
         stripe.api_key = settings.STRIPE_SECRET_KEY
         if not stripe.api_key:
             return JsonResponse({'error': 'Stripe is not configured on the server.'}, status=503)
@@ -218,7 +189,7 @@ def payments(request):
                 )
                 intent = stripe.PaymentIntent.create(
                     amount=int(round(order.order_total * 100)),
-                    currency='usd',
+					currency='inr',
                     payment_method_types=['card'],
                     description=f'Export order {order.order_number}: {product_description}'[:500],
                     shipping={
@@ -250,18 +221,13 @@ def payments(request):
                 expected_amount = int(round(order.order_total * 100))
                 intent_metadata = intent.metadata.to_dict()
                 if (intent.status != 'succeeded' or intent.amount != expected_amount
-                        or intent.currency != 'usd'
+                        or intent.currency != 'inr'
                     or intent_metadata.get('order_id') != str(order.id)):
                     return JsonResponse({'error': 'Stripe could not verify this payment.'}, status=400)
 
                 with transaction.atomic():
-                    locked_products = {
-                        product.id: product
-                        for product in Product.objects.select_for_update().filter(
-                            id__in=cart_items.values_list('product_id', flat=True)
-                        )
-                    }
-                    current_stock_errors = stock_errors(cart_items, locked_products)
+                    locked = locked_skus_for_cart(cart_items)
+                    current_stock_errors = stock_errors(cart_items, locked)
                     if current_stock_errors:
                         return JsonResponse({'error': ' '.join(current_stock_errors)}, status=409)
                     payment, created = Payment.objects.get_or_create(
@@ -273,45 +239,11 @@ def payments(request):
                             'status': intent.status,
                         },
                     )
-                    #Add products to ordered product table and mark order complete as true in order table
                     if created:
                         order.payment = payment
                         order.is_ordered = True
                         order.save(update_fields=['payment', 'is_ordered', 'updated_at'])
-
-                        for item in cart_items:
-                            order_product = OrderProduct.objects.create(
-                                order=order,
-                                payment=payment,
-                                user=request.user,
-                                product=item.product,
-                                quantity=item.quantity,
-                                product_price=item.product.price,
-                                ordered=True,
-                            )
-                            order_product.variation.set(item.variations.all())
-                            order_product.save()
-
-                            #Update the product stock
-                            product = item.product
-                            locked_product = locked_products[product.id]
-                            locked_product.stock -= item.quantity
-                            locked_product.save(update_fields=['stock'])
-
-                        #Clear the cart
-                        cart_items.update(is_active=False)
-                        request.session.pop('pending_order_id', None)
-                        request.session.pop('checkout_data', None)
-
-                    #Send order received email to the customer
-                    mail_subject = 'Order Placed Successfully'
-                    message = render_to_string('orders/order_received_email.html', {
-                        'user': request.user,
-                        'order': order,
-                    })
-                    to_email = request.user.email
-                    send_email = EmailMessage(mail_subject, message, to=[to_email])
-                    send_email.send()
+                        fulfill_order(request, order, payment, cart_items)
 
                 return JsonResponse({'redirect_url': order_complete_url(order, payment)})
 
@@ -322,13 +254,15 @@ def payments(request):
     context = {
         'order': order,
         'cart_items': cart_items,
-        'total': order.order_total - order.tax,
+        'total': order.order_total - order.tax + order.discount,
+        'discount': order.discount,
         'tax': order.tax,
         'grand_total': order.order_total,
         'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
         'country_code': country_code,
     }
-    return render(request, "orders/payments.html", context)
+    return render(request, 'orders/payments.html', context)
+
 
 @login_required
 def order_complete(request):
@@ -344,34 +278,45 @@ def order_complete(request):
         user=request.user,
         is_ordered=True,
     )
-    order_products = OrderProduct.objects.filter(order=order).select_related(
-        'product'
-    ).prefetch_related('variation')
-    return render(request, "orders/order_complete.html", {
+    order_products = order.orderproduct_set.select_related('product', 'sku').prefetch_related('variation')
+    return render(request, 'orders/order_complete.html', {
         'order': order,
         'payment': order.payment,
         'order_products': order_products,
-        'subtotal': order.order_total - order.tax,
+        'subtotal': order.order_total - order.tax + order.discount,
     })
 
 
+@login_required
 def orders(request):
     orders = Order.objects.filter(user=request.user, is_ordered=True).order_by('-created_at')
-    context = {
-        'orders': orders
-    }
-    return render(request, "orders/orders.html", context)
+    return render(request, 'orders/orders.html', {'orders': orders})
 
-def order_details(request, order_id):
-    order_detail = OrderProduct.objects.filter(order__order_number=order_id)
-    order = Order.objects.get(order_number=order_id)
-    sub_total = 0
-    for item in order_detail:
-        order_product = OrderProduct.objects.get(id=item.id)
-        sub_total += order_product.subtotal()
-    context = {
+
+@login_required
+def order_details(request, order_number):
+    order = get_object_or_404(Order, order_number=order_number, user=request.user, is_ordered=True)
+    order_detail = order.orderproduct_set.select_related('product', 'sku').prefetch_related('variation')
+    sub_total = sum(item.subtotal() for item in order_detail)
+    return render(request, 'orders/order_details.html', {
         'order_detail': order_detail,
         'order': order,
-        'sub_total': sub_total
-    }
-    return render(request, "orders/order_details.html", context)
+        'sub_total': sub_total,
+        'can_cancel': order.status in ('New', 'Accepted'),
+    })
+
+
+@login_required
+def cancel_order(request, order_number):
+    order = get_object_or_404(Order, order_number=order_number, user=request.user, is_ordered=True)
+    if request.method != 'POST':
+        return redirect('order_details', order_number=order.order_number)
+    if order.status not in ('New', 'Accepted'):
+        messages.error(request, 'This order can no longer be cancelled.')
+        return redirect('order_details', order_number=order.order_number)
+    try:
+        cancel_placed_order(order)
+        messages.success(request, 'Your order has been cancelled. If you paid by card, a refund has been requested.')
+    except stripe.StripeError as error:
+        messages.error(request, f'Order was not cancelled: {error}')
+    return redirect('order_details', order_number=order.order_number)

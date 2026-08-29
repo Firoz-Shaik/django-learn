@@ -2,19 +2,16 @@
 {% load static %}
 {% block content %}
 
-<!-- ========================= SECTION PAGETOP ========================= -->
 <section class="section-pagetop bg">
 <div class="container">
-	{% if 'search' in request.path %}
+	{% if keyword %}
 	<h2 class="title-page">Search Results</h2>
 	{% else %}
 	<h2 class="title-page">Our Store</h2>
 	{% endif %}
-</div> <!-- container //  -->
+</div>
 </section>
-<!-- ========================= SECTION INTRO END// ========================= -->
 
-<!-- ========================= SECTION CONTENT ========================= -->
 <section class="section-content padding-y">
 <div class="container">
 
@@ -24,109 +21,105 @@
 <div class="card">
 	<article class="filter-group">
 		<header class="card-header">
-			<a href="#" data-toggle="collapse" data-target="#collapse_1" aria-expanded="true" class="">
+			<a href="#" data-toggle="collapse" data-target="#collapse_1" aria-expanded="true">
 				<i class="icon-control fa fa-chevron-down"></i>
 				<h6 class="title">Categories</h6>
 			</a>
 		</header>
-		<div class="filter-content collapse show" id="collapse_1" style="">
+		<div class="filter-content collapse show" id="collapse_1">
 			<div class="card-body">
-				
 				<ul class="list-menu">
-					<li><a href="{% url 'store' %}">All</a></li>
+					<li><a href="{% url 'store' %}{% if filter_query %}?{{ filter_query }}{% endif %}">All</a></li>
 				{% for category in links %}
-					<li><a href="{{category.get_url}}">{{ category.category_name }}</a></li>
+					<li><a href="{{ category.get_url }}{% if filter_query %}?{{ filter_query }}{% endif %}">{{ category.category_name }}</a></li>
 				{% endfor %}
 				</ul>
-
-			</div> <!-- card-body.// -->
+			</div>
 		</div>
-	</article> <!-- filter-group  .// -->
+	</article>
+	<form method="get">
+		{% if keyword %}<input type="hidden" name="keyword" value="{{ keyword }}">{% endif %}
+		<input type="hidden" name="sort" value="{{ sort }}">
 	<article class="filter-group">
 		<header class="card-header">
-			<a href="#" data-toggle="collapse" data-target="#collapse_4" aria-expanded="true" class="">
+			<a href="#" data-toggle="collapse" data-target="#collapse_4" aria-expanded="true">
 				<i class="icon-control fa fa-chevron-down"></i>
-				<h6 class="title">Sizes </h6>
+				<h6 class="title">Sizes</h6>
 			</a>
 		</header>
-		<div class="filter-content collapse show" id="collapse_4" style="">
+		<div class="filter-content collapse show" id="collapse_4">
 			<div class="card-body">
+			  {% if size_options %}
+			  {% for size in size_options %}
 			  <label class="checkbox-btn">
-			    <input type="checkbox">
-			    <span class="btn btn-light"> XS </span>
+			    <input type="checkbox" name="size" value="{{ size }}" {% if size in selected_sizes %}checked{% endif %}>
+			    <span class="btn btn-light"> {{ size }} </span>
 			  </label>
-
-			  <label class="checkbox-btn">
-			    <input type="checkbox">
-			    <span class="btn btn-light"> SM </span>
-			  </label>
-
-			  <label class="checkbox-btn">
-			    <input type="checkbox">
-			    <span class="btn btn-light"> LG </span>
-			  </label>
-
-			  <label class="checkbox-btn">
-			    <input type="checkbox">
-			    <span class="btn btn-light"> XXL </span>
-			  </label>
-		</div><!-- card-body.// -->
+			  {% endfor %}
+			  {% else %}
+			  <p class="text-muted small mb-0">No size options in this view.</p>
+			  {% endif %}
+			</div>
 		</div>
-	</article> <!-- filter-group .// -->
+	</article>
 	
 	<article class="filter-group">
 		<header class="card-header">
-			<a href="#" data-toggle="collapse" data-target="#collapse_3" aria-expanded="true" class="">
+			<a href="#" data-toggle="collapse" data-target="#collapse_3" aria-expanded="true">
 				<i class="icon-control fa fa-chevron-down"></i>
-				<h6 class="title">Price range </h6>
+				<h6 class="title">Price range</h6>
 			</a>
 		</header>
-		<div class="filter-content collapse show" id="collapse_3" style="">
+		<div class="filter-content collapse show" id="collapse_3">
 			<div class="card-body">
-				
 				<div class="form-row">
 				<div class="form-group col-md-6">
 				  <label>Min</label>
-				  <!-- <input class="form-control" placeholder="$0" type="number"> -->
-				  	<select class="mr-2 form-control">
-						<option value="0">$0</option>
-						<option value="50">$50</option>
-						<option value="100">$100</option>
-						<option value="150">$150</option>
-						<option value="200">$200</option>
-						<option value="500">$500</option>
-						<option value="1000">$1000</option>
+				  	<select class="mr-2 form-control" name="min_price">
+						{% for price in price_choices %}
+						<option value="{{ price }}" {% if min_price == price %}selected{% endif %}>₹{{ price }}</option>
+						{% endfor %}
 					</select>
 				</div>
 				<div class="form-group text-right col-md-6">
 				  <label>Max</label>
-				  	<select class="mr-2 form-control">
-						<option value="50">$50</option>
-						<option value="100">$100</option>
-						<option value="150">$150</option>
-						<option value="200">$200</option>
-						<option value="500">$500</option>
-						<option value="1000">$1000</option>
-						<option value="2000">$2000+</option>
+				  	<select class="mr-2 form-control" name="max_price">
+						<option value="">Any</option>
+						{% for price in price_choices %}
+						{% if price > 0 %}
+						<option value="{{ price }}" {% if max_price == price %}selected{% endif %}>₹{{ price }}</option>
+						{% endif %}
+						{% endfor %}
 					</select>
 				</div>
-				</div> <!-- form-row.// -->
-				<button class="btn btn-block btn-primary">Apply</button>
-			</div><!-- card-body.// -->
+				</div>
+				<button class="btn btn-block btn-primary" type="submit">Apply</button>
+				<a href="{% if 'search' in request.path %}{% url 'search' %}{% if keyword %}?keyword={{ keyword }}{% endif %}{% else %}{% url 'store' %}{% endif %}" class="btn btn-block btn-light mt-2">Clear</a>
+			</div>
 		</div>
-	</article> <!-- filter-group .// -->
+	</article>
+	</form>
 	
-</div> <!-- card.// -->
+</div>
 
-	</aside> <!-- col.// -->
+	</aside>
 	<main class="col-md-9">
 
 <header class="border-bottom mb-4 pb-3">
-		<div class="form-inline">
+		<form method="get" class="form-inline">
+			{% if keyword %}<input type="hidden" name="keyword" value="{{ keyword }}">{% endif %}
+			{% for size in selected_sizes %}<input type="hidden" name="size" value="{{ size }}">{% endfor %}
+			{% if min_price %}<input type="hidden" name="min_price" value="{{ min_price }}">{% endif %}
+			{% if max_price != '' %}<input type="hidden" name="max_price" value="{{ max_price }}">{% endif %}
 			<span class="mr-md-auto">{{ product_count }} Items found </span>
-			<span class="mr-2">Sort by</span>
-		</div>
-</header><!-- sect-heading -->
+			<label class="mr-2 mb-0" for="sort">Sort by</label>
+			<select class="form-control form-control-sm" id="sort" name="sort" onchange="this.form.submit()">
+				<option value="newest" {% if sort == 'newest' %}selected{% endif %}>Newest</option>
+				<option value="price_asc" {% if sort == 'price_asc' %}selected{% endif %}>Price: low to high</option>
+				<option value="price_desc" {% if sort == 'price_desc' %}selected{% endif %}>Price: high to low</option>
+			</select>
+		</form>
+</header>
 
 <div class="row">
 	{% if products %}
@@ -135,13 +128,13 @@
 		<figure class="card card-product-grid">
 			<div class="img-wrap"> 
 				<a href="{{ product.get_url }}">{% if product.get_primary_image %}<img src="{{ product.get_primary_image.url }}" alt="{{ product.product_name }}">{% endif %}</a>
-			</div> <!-- img-wrap.// -->
+			</div>
 			<figcaption class="info-wrap">
 				<div class="fix-height">
 					<a href="{{product.get_url}}" class="title">{{ product.product_name }}</a>
 					<div class="price-wrap mt-2">
-						<span class="price">${{product.price}}</span>
-					</div> <!-- price-wrap.// -->
+						<span class="price">₹{{ product.price }}</span>
+					</div>
 				</div>
 				{% if product.stock <= 0 or not product.is_available %}
 				<a href="#" class="btn btn-block btn-danger">Out of stock</a>
@@ -150,19 +143,18 @@
 				{% endif %}
 			</figcaption>
 		</figure>
-	</div> <!-- col.// -->
+	</div>
 	{% endfor %}
 	{% else %}
 		<h2 class="text-center">No products found.</h2>
 	{% endif %}
-</div> <!-- row end.// -->
+</div>
 
-
-<nav class="mt-4" aria-label="Page navigation sample">
+<nav class="mt-4" aria-label="Page navigation">
 	{% if products.has_other_pages %}
 	<ul class="pagination">
 		{% if products.has_previous %}
-			<li class="page-item"><a class="page-link" href="?page={{ products.previous_page_number }}">Previous</a></li>
+			<li class="page-item"><a class="page-link" href="?page={{ products.previous_page_number }}{% if filter_query %}&{{ filter_query }}{% endif %}">Previous</a></li>
 		{% else %}
 			<li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
 		{% endif %}
@@ -170,11 +162,11 @@
 			{% if products.number == num %}
 				<li class="page-item active"><a class="page-link" href="#">{{ num }}</a></li>
 			{% else %}
-				<li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+				<li class="page-item"><a class="page-link" href="?page={{ num }}{% if filter_query %}&{{ filter_query }}{% endif %}">{{ num }}</a></li>
 			{% endif %}
 		{% endfor %}
 		{% if products.has_next %}
-			<li class="page-item"><a class="page-link" href="?page={{ products.next_page_number }}">Next</a></li>
+			<li class="page-item"><a class="page-link" href="?page={{ products.next_page_number }}{% if filter_query %}&{{ filter_query }}{% endif %}">Next</a></li>
 		{% else %}
 			<li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
 		{% endif %}
@@ -182,12 +174,11 @@
 	{% endif %}
 </nav>
 
-	</main> <!-- col.// -->
+	</main>
 
 </div>
 
-</div> <!-- container .//  -->
+</div>
 </section>
-<!-- ========================= SECTION CONTENT END// ========================= -->
  
 {% endblock %}

@@ -5,6 +5,7 @@
 <section class="section-content padding-y bg">
 <div class="container">
 {% include 'includes/alerts.html' %}
+<form id="coupon-form" action="{% url 'apply_coupon' %}" method="post">{% csrf_token %}<input type="hidden" name="next" value="{% url 'checkout' %}"></form>
 <!-- ============================ COMPONENT 1 ================================= -->
 <form method="POST" action="{% url 'place_order' %}">
 {% csrf_token %}
@@ -116,8 +117,8 @@
 	                    <td class="text-center">{{ item.quantity }}</td>
                 	    <td> 
                 				<div class="price-wrap"> 
-                					<var class="price">$ {{ item.sub_total }}</var> 
-                					<small class="text-muted"> $ {{ item.product.price }} each </small> 
+                					<var class="price">₹{{ item.sub_total }}</var> 
+                					<small class="text-muted"> ₹{{ item.product.price }} each </small> 
                 				</div> <!-- price-wrap .// -->
                 	    </td>
                             	<td class="text-right"> 
@@ -127,7 +128,22 @@
                 {% endfor %}
                 </tbody>
             </table>
-		
+            <div class="mb-3">
+                <label class="small text-muted">Coupon</label>
+                <div class="input-group">
+                    <input type="text" name="code" form="coupon-form" class="form-control" placeholder="Coupon code" value="{{ coupon.code|default:'' }}">
+                    <div class="input-group-append">
+                        <button class="btn btn-light" type="submit" form="coupon-form">Apply</button>
+                    </div>
+                </div>
+                {% if coupon %}<p class="small text-success mb-0 mt-1">Applied: {{ coupon.code }} (-₹{{ discount }})</p>{% endif %}
+            </div>
+            {% if discount %}
+            <p class="text-right mb-1">Subtotal: ₹{{ total }}</p>
+            <p class="text-right mb-1">Discount: -₹{{ discount }}</p>
+            <p class="text-right mb-1">Tax: ₹{{ tax }}</p>
+            <p class="text-right font-weight-bold">Total: ₹{{ grand_total }}</p>
+            {% endif %}
 			<button type="submit" class="btn btn-primary btn-block"> Place Order </button>
 			<a href="{% url 'store' %}" class="btn btn-light btn-block">Continue Shopping</a>
 		</div> <!-- card-body.// -->

@@ -1,6 +1,6 @@
-Django>=5.0
-Pillow>=10.0
-stripe>=12.0
-python-dotenv>=1.0
-psycopg[binary]>=3.2
-admin-thumbnails>=0.2
+Django
+Pillow
+stripe
+python-dotenv
+psycopg[binary]
+django-admin-thumbnails

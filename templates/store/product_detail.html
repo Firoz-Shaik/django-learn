@@ -32,40 +32,53 @@
     <h2 class="title">{{ single_product.product_name }}</h2>
 
     <div class="mb-3"> 
-        <var class="price h4">$ {{ single_product.price }}</var> 
+        <var class="price h4">₹{{ single_product.price }}</var> 
     </div> 
 
     <p>{{ single_product.description }}</p>
 
-
     <hr>
+        {% if colors %}
         <div class="row">
             <div class="item-option-select">
                 <h6>Choose Color</h6>
-                    <select name="color" class="form-control" required>
+                    <select name="color" id="id_color" class="form-control" required>
                         <option value="" disabled selected>Select Color</option>
-                        {% for color in single_product.variation_set.colors %}
-                            <option value="{{ color.variation_value|lower }}">{{ color.variation_value|capfirst }}</option>
+                        {% for color in colors %}
+                            <option value="{{ color.variation_value|lower }}" data-id="{{ color.id }}">{{ color.variation_value|capfirst }}</option>
                         {% endfor %}
                     </select>
             </div>
-        </div> <!-- row.// --> 
+        </div>
+        {% endif %}
+        {% if sizes %}
         <div class="row">
             <div class="item-option-select">
                 <h6>Select Size</h6>
-                    <select name="size" class="form-control" required>
-                        <option value="" disabled selected>Select Size</option> 
-                        {% for size in single_product.variation_set.sizes %}
-                            <option value="{{ size.variation_value|lower }}">{{ size.variation_value|capfirst }}</option>
+                    <select name="size" id="id_size" class="form-control" required>
+                        <option value="" disabled selected>Select Size</option>
+                        {% for size in sizes %}
+                            <option value="{{ size.variation_value|lower }}" data-id="{{ size.id }}">{{ size.variation_value|capfirst }}</option>
                         {% endfor %}
                     </select>
             </div>
-        </div> <!-- row.// -->
+        </div>
+        {% endif %}
+        <p class="text-muted mt-2" id="sku-stock-label"></p>
         <hr>
         {% if single_product.stock <= 0 or not single_product.is_available %}
-        <button type="button" class="btn btn-danger" disabled> <span class="text">Out of stock</span> <i class="fas fa-shopping-cart"></i> </button>
+        <button type="button" class="btn btn-danger" id="add-to-cart-btn" disabled> <span class="text">Out of stock</span> <i class="fas fa-shopping-cart"></i> </button>
         {% else %}
-            <button type="submit" class="btn  btn-primary"> <span class="text">Add to cart</span> <i class="fas fa-shopping-cart"></i>  </button>
+            <button type="submit" class="btn btn-primary" id="add-to-cart-btn"> <span class="text">Add to cart</span> <i class="fas fa-shopping-cart"></i>  </button>
+        {% endif %}
+        {% if user.is_authenticated %}
+            {% if in_wishlist %}
+            <a href="{% url 'remove_from_wishlist' single_product.id %}?next={{ request.path }}" class="btn btn-outline-danger">Remove from wishlist</a>
+            {% else %}
+            <a href="{% url 'add_to_wishlist' single_product.id %}?next={{ request.path }}" class="btn btn-outline-secondary">Add to wishlist</a>
+            {% endif %}
+        {% else %}
+            <a href="{% url 'login' %}?next={{ request.path }}" class="btn btn-outline-secondary">Login to save wishlist</a>
         {% endif %}
     </article> 
     </form>
@@ -201,6 +214,69 @@ document.querySelectorAll('.star-picker').forEach((picker) => {
         hoverStars.style.width = ratingInput.value ? `${Number(ratingInput.value) / 5 * 100}%` : '0';
     });
 });
+</script>
+{{ sku_data|json_script:"sku-data" }}
+<script>
+(function () {
+    const dataNode = document.getElementById('sku-data');
+    if (!dataNode) return;
+    const data = JSON.parse(dataNode.textContent);
+    const colorSelect = document.getElementById('id_color');
+    const sizeSelect = document.getElementById('id_size');
+    const stockLabel = document.getElementById('sku-stock-label');
+    const addButton = document.getElementById('add-to-cart-btn');
+    const skuStock = (colorId, sizeId) => data.skus[`${colorId || 0}-${sizeId || 0}`];
+    const selectedId = (select) => {
+        if (!select || !select.selectedOptions.length) return 0;
+        return Number(select.selectedOptions[0].dataset.id || 0);
+    };
+    const update = () => {
+        const colorId = selectedId(colorSelect);
+        const sizeId = selectedId(sizeSelect);
+        if (sizeSelect) {
+            [...sizeSelect.options].forEach((option) => {
+                if (!option.dataset.id) return;
+                if (colorSelect && !colorId) {
+                    option.disabled = false;
+                    return;
+                }
+                const stock = skuStock(colorId, option.dataset.id);
+                option.disabled = stock === 0 || stock === undefined;
+            });
+        }
+        if (colorSelect) {
+            [...colorSelect.options].forEach((option) => {
+                if (!option.dataset.id) return;
+                if (sizeSelect && !sizeId) {
+                    const anyStock = (data.sizes || []).some((size) => (skuStock(option.dataset.id, size.id) || 0) > 0);
+                    option.disabled = !(anyStock || (!data.sizes.length && (skuStock(option.dataset.id, 0) || 0) > 0));
+                    return;
+                }
+                const stock = skuStock(option.dataset.id, sizeId);
+                option.disabled = stock === 0 || stock === undefined;
+            });
+        }
+        const needsColor = Boolean(colorSelect);
+        const needsSize = Boolean(sizeSelect);
+        if ((needsColor && !colorId) || (needsSize && !sizeId)) {
+            if (stockLabel) stockLabel.textContent = 'Select options to see stock.';
+            return;
+        }
+        const stock = skuStock(colorId, sizeId);
+        if (stock === undefined) {
+            if (stockLabel) stockLabel.textContent = 'This combination is not available.';
+            if (addButton) addButton.disabled = true;
+            return;
+        }
+        if (stockLabel) stockLabel.textContent = stock > 0 ? `${stock} in stock` : 'Out of stock';
+        if (addButton && addButton.tagName === 'BUTTON' && addButton.type === 'submit') {
+            addButton.disabled = stock <= 0;
+        }
+    };
+    colorSelect && colorSelect.addEventListener('change', update);
+    sizeSelect && sizeSelect.addEventListener('change', update);
+    update();
+})();
 </script>
 
 {% endblock %}

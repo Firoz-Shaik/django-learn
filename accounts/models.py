@@ -3,7 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 
 # Create your models here.
 class MyAccountManager(BaseUserManager):
-    def create_user(self, first_name, last_name, username, email, phone_number, password=None):
+    def create_user(self, first_name, last_name, username, email, phone_number=None, password=None):
         if not email:
             raise ValueError('User must have an email address')
         if not username:
@@ -40,7 +40,7 @@ class Account(AbstractBaseUser):
     last_name = models.CharField(max_length=50)
     username = models.CharField(max_length=50, unique=True)
     email = models.EmailField(max_length=100, unique=True)
-    phone_number = models.CharField(max_length=50)
+    phone_number = models.CharField(max_length=50, blank=True, null=True)
 
     # required fields
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -64,6 +64,10 @@ class Account(AbstractBaseUser):
         return self.is_admin
     def has_module_perms(self, add_label):
         return True
+
+    @property
+    def full_name(self):
+        return f'{self.first_name} {self.last_name}'.strip()
 
 class UserProfile(models.Model):
     user = models.OneToOneField(Account, on_delete=models.CASCADE)

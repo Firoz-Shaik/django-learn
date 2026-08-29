@@ -67,8 +67,8 @@
 	</td>
 	<td> 
 				<div class="price-wrap"> 
-					<var class="price">$ {{ item.sub_total }}</var> 
-					<small class="text-muted"> $ {{ item.product.price }} each </small> 
+					<var class="price">₹{{ item.sub_total }}</var> 
+					<small class="text-muted"> ₹{{ item.product.price }} each </small> 
 				</div> <!-- price-wrap .// -->
 	</td>
 	<td class="text-right"> 
@@ -87,20 +87,42 @@
 		<div class="card-body">
 			<dl class="dlist-align">
 			  <dt>Total price:</dt>
-							<dd class="text-right">$ {{ total }}</dd>
+							<dd class="text-right">₹{{ total }}</dd>
 			</dl>
+			{% if discount %}
+			<dl class="dlist-align">
+			  <dt>Discount{% if coupon %} ({{ coupon.code }}){% endif %}:</dt>
+							<dd class="text-right">- ₹{{ discount }}</dd>
+			</dl>
+			{% endif %}
 			<dl class="dlist-align">
 			  <dt>Tax:</dt>
-							<dd class="text-right"> $ {{ tax }} </dd>
+							<dd class="text-right"> ₹{{ tax }} </dd>
 			</dl>
 			<dl class="dlist-align">
 			  <dt>Total:</dt>
-							<dd class="text-right text-dark b"><strong>${{ grand_total }}</strong></dd>
+							<dd class="text-right text-dark b"><strong>₹{{ grand_total }}</strong></dd>
 			</dl>
 			<hr>
-			<p class="text-center mb-3">
-				<img src="{% static 'images/misc/payments.png' %}" height="26">
-			</p>
+			{% if user.is_authenticated %}
+			<form action="{% url 'apply_coupon' %}" method="post" class="mb-3">
+				{% csrf_token %}
+				<input type="hidden" name="next" value="{% url 'cart' %}">
+				<div class="input-group">
+					<input type="text" name="code" class="form-control" placeholder="Coupon code" value="{{ coupon.code|default:'' }}">
+					<div class="input-group-append">
+						<button class="btn btn-light" type="submit">Apply</button>
+					</div>
+				</div>
+			</form>
+			{% if coupon %}
+			<form action="{% url 'remove_coupon' %}" method="post" class="mb-3">
+				{% csrf_token %}
+				<input type="hidden" name="next" value="{% url 'cart' %}">
+				<button class="btn btn-sm btn-outline-danger btn-block" type="submit">Remove coupon</button>
+			</form>
+			{% endif %}
+			{% endif %}
 			<a href="{% url 'checkout' %}" class="btn btn-primary btn-block"> Checkout </a>
 			<a href="{% url 'store' %}" class="btn btn-light btn-block">Continue Shopping</a>
 		</div> <!-- card-body.// -->

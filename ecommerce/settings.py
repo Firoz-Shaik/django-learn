@@ -31,9 +31,9 @@ STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes')
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = [host.strip() for host in os.environ.get('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if host.strip()]
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('DJANGO_ALLOWED_HOSTS').split(',') if host.strip()]
 
 
 # Application definition
@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "ecommerce",
     "category",
     "accounts",
-    "store",
+    "store.apps.StoreConfig",
     "carts",
     "orders",
 ]
@@ -163,12 +163,31 @@ MESSAGE_TAGS = {
     messages.ERROR: "danger",
 }
 
-#SMTP Configuration
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('1', 'true', 'yes')
+def _env(key, default=''):
+    value = os.environ.get(key, default)
+    if value is None:
+        return default
+    return str(value).strip().strip('"').strip("'")
 
-STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+
+# SMTP via Django 6.1 MAILERS. Do not also set EMAIL_HOST/USER/PASSWORD
+# (Django raises ImproperlyConfigured). Gmail rejects webmaster@localhost.
+_email_user = _env('EMAIL_HOST_USER')
+DEFAULT_FROM_EMAIL = _env('DEFAULT_FROM_EMAIL') or _email_user
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+MAILERS = {
+    'default': {
+        'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+        'OPTIONS': {
+            'host': _env('EMAIL_HOST', 'smtp.gmail.com'),
+            'port': int(_env('EMAIL_PORT', '587') or '587'),
+            'username': _email_user,
+            'password': _env('EMAIL_HOST_PASSWORD').replace(' ', ''),
+            'use_tls': _env('EMAIL_USE_TLS', 'True').lower() in ('1', 'true', 'yes'),
+        },
+    },
+}
+
+STRIPE_PUBLISHABLE_KEY=os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_SECRET_KEY=os.environ.get('STRIPE_SECRET_KEY', '')

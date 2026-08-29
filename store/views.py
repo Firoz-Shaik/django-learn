@@ -2,40 +2,105 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
 from carts.views import _cart_id
 from .forms import ReviewForm
-from .models import Product, ProductGallery, ReviewRating
+from .models import Product, ProductGallery, ReviewRating, Wishlist, Variation
+from .sku import sku_payload
 from orders.models import OrderProduct
 from carts.models import CartItem
 from category.models import Category
 from django.contrib import messages
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
-# Create your views here.
 
-def store(request, category_slug=None):
-    categories = None
-    products = None
-    if category_slug != None:
-        categories = get_object_or_404(Category, slug=category_slug)
-        # include all products in the category; template will mark out-of-stock items
-        products = Product.objects.filter(category=categories).order_by('id')
-        paginator = Paginator(products, 3)
-        page = request.GET.get('page')
-        paged_products = paginator.get_page(page)
-        
-        product_count = products.count()
+PRICE_CHOICES = [0, 500, 1000, 1500, 2000, 3000]
+
+
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def apply_store_filters(request, products):
+    selected_sizes = [value.strip() for value in request.GET.getlist('size') if value.strip()]
+    min_price = _int_or_none(request.GET.get('min_price')) or 0
+    max_price = _int_or_none(request.GET.get('max_price'))
+    sort = request.GET.get('sort') or 'newest'
+
+    size_options = list(
+        Variation.objects.filter(
+            product__in=products,
+            variation_category='size',
+            is_active=True,
+        ).values_list('variation_value', flat=True).distinct()
+    )
+    size_options.sort(key=lambda value: (not value.isdigit(), int(value) if value.isdigit() else value.lower()))
+
+    if selected_sizes:
+        size_query = Q()
+        for size in selected_sizes:
+            size_query |= Q(
+                variation__variation_category='size',
+                variation__variation_value__iexact=size,
+            )
+        products = products.filter(size_query).distinct()
+    if min_price:
+        products = products.filter(price__gte=min_price)
+    if max_price:
+        products = products.filter(price__lte=max_price)
+
+    if sort == 'price_asc':
+        products = products.order_by('price', 'id')
+    elif sort == 'price_desc':
+        products = products.order_by('-price', 'id')
     else:
-        # include all products so out-of-stock items appear with proper label
-        products = Product.objects.all().order_by('id')
-        product_count = products.count()
-        paginator = Paginator(products, 3)
-        page = request.GET.get('page')        
-        paged_products = paginator.get_page(page)
+        sort = 'newest'
+        products = products.order_by('-created_date', 'id')
 
-    context = {
+    query = request.GET.copy()
+    query.pop('page', None)
+    return products, {
+        'size_options': size_options,
+        'selected_sizes': selected_sizes,
+        'min_price': min_price,
+        'max_price': '' if max_price is None else max_price,
+        'sort': sort,
+        'price_choices': PRICE_CHOICES,
+        'filter_query': query.urlencode(),
+        'keyword': request.GET.get('keyword', '').strip(),
+    }
+
+
+def _store_page(request, products):
+    products, filters = apply_store_filters(request, products)
+    product_count = products.count()
+    paged_products = Paginator(products, 6).get_page(request.GET.get('page'))
+    return render(request, 'store/store.html', {
         'products': paged_products,
         'product_count': product_count,
-        }
-    return render(request, "store/store.html", context)
+        **filters,
+    })
+
+
+def store(request, category_slug=None):
+    if category_slug:
+        category = get_object_or_404(Category, slug=category_slug)
+        products = Product.objects.filter(category=category)
+    else:
+        products = Product.objects.all()
+    return _store_page(request, products)
+
+
+def search(request):
+    keyword = request.GET.get('keyword', '').strip()
+    if not keyword and not request.GET.getlist('size') and not request.GET.get('min_price') and not request.GET.get('max_price'):
+        return redirect('store')
+    products = Product.objects.all()
+    if keyword:
+        products = products.filter(
+            Q(description__icontains=keyword) | Q(product_name__icontains=keyword)
+        )
+    return _store_page(request, products)
 
 def product_detail(request, category_slug, product_slug):
     try:
@@ -56,34 +121,24 @@ def product_detail(request, category_slug, product_slug):
     user_review = ReviewRating.objects.filter(
         product=single_product, user=request.user
     ).first() if request.user.is_authenticated else None
+    in_wishlist = Wishlist.objects.filter(
+        user=request.user, product=single_product
+    ).exists() if request.user.is_authenticated else False
     context = {
         'single_product': single_product,
         'in_cart': in_cart,
+        'in_wishlist': in_wishlist,
         'product_reviews' : product_reviews,
         'average_rating': average_rating,
         'review_count': single_product.get_review_count(),
         'ordered_products': ordered_products,
         'user_review': user_review,
         'product_gallery': product_gallery,
+        'sku_data': sku_payload(single_product),
+        'colors': single_product.variation_set.colors(),
+        'sizes': single_product.variation_set.sizes(),
     }
     return render(request, "store/product_detail.html", context)
-
-def search(request):
-    # If no keyword supplied, redirect to the main store page (shows all products)
-    keyword = request.GET.get('keyword', '').strip()
-    if not keyword:
-        return redirect('store')
-
-    products = Product.objects.order_by('-created_date').filter(
-        Q(description__icontains=keyword) | Q(product_name__icontains=keyword)
-    )
-    product_count = products.count()
-
-    context = {
-        'products': products,
-        'product_count': product_count,
-    }
-    return render(request, "store/store.html", context)
 
 @login_required
 def submit_review(request, product_id):
@@ -119,4 +174,28 @@ def submit_review(request, product_id):
         return redirect(url or product.get_url())
 
     return redirect(url or product.get_url())
+
+
+@login_required
+def wishlist(request):
+    wishlist_items = Wishlist.objects.filter(user=request.user).select_related(
+        'product', 'product__category'
+    )
+    return render(request, 'store/wishlist.html', {'wishlist_items': wishlist_items})
+
+
+@login_required
+def add_to_wishlist(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    Wishlist.objects.get_or_create(user=request.user, product=product)
+    messages.success(request, f'{product.product_name} was added to your wishlist.')
+    return redirect(request.POST.get('next') or request.GET.get('next') or product.get_url())
+
+
+@login_required
+def remove_from_wishlist(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+    Wishlist.objects.filter(user=request.user, product=product).delete()
+    messages.success(request, f'{product.product_name} was removed from your wishlist.')
+    return redirect(request.POST.get('next') or request.GET.get('next') or 'wishlist')
 

@@ -1,0 +1,13 @@
+{% autoescape off %}
+
+Hi {{ order.first_name }},
+
+Your order #{{ order.order_number }} is now {{ status_label }}.
+
+{% if status_label == 'Cancelled' %}
+If you paid by card, a refund has been requested. Stock for the items in this order has been restored.
+{% endif %}
+
+Thank you for shopping with GreatKart.
+
+{% endautoescape %}

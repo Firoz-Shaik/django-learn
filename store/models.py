@@ -40,6 +40,17 @@ class Product(models.Model):
 
     def get_review_count(self):
         return self.reviewrating_set.filter(status=True).count()
+
+    def total_sku_stock(self):
+        from django.db.models import Sum
+        total = self.skus.filter(is_active=True).aggregate(total=Sum('stock'))['total']
+        return total if total is not None else self.stock
+
+    def has_colors(self):
+        return self.variation_set.colors().exists()
+
+    def has_sizes(self):
+        return self.variation_set.sizes().exists()
     
 class Variation(models.Model):
     product = models.ForeignKey(Product,on_delete=models.CASCADE)
@@ -51,6 +62,53 @@ class Variation(models.Model):
 
     def __str__(self):
         return self.variation_value
+
+class ProductSKU(models.Model):
+    product = models.ForeignKey(Product, related_name='skus', on_delete=models.CASCADE)
+    color = models.ForeignKey(
+        Variation, related_name='color_skus', on_delete=models.CASCADE,
+        null=True, blank=True, limit_choices_to={'variation_category': 'color'},
+    )
+    size = models.ForeignKey(
+        Variation, related_name='size_skus', on_delete=models.CASCADE,
+        null=True, blank=True, limit_choices_to={'variation_category': 'size'},
+    )
+    stock = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'product SKU'
+        verbose_name_plural = 'product SKUs'
+        constraints = [
+            models.UniqueConstraint(fields=['product', 'color', 'size'], name='unique_product_color_size_sku'),
+        ]
+
+    def __str__(self):
+        parts = [self.product.product_name]
+        if self.color:
+            parts.append(str(self.color))
+        if self.size:
+            parts.append(str(self.size))
+        return ' / '.join(parts)
+
+    def label(self):
+        parts = []
+        if self.color:
+            parts.append(self.color.variation_value)
+        if self.size:
+            parts.append(self.size.variation_value)
+        return ' / '.join(parts) or 'Default'
+
+class Wishlist(models.Model):
+    user = models.ForeignKey(Account, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'product')
+
+    def __str__(self):
+        return f'{self.user.email} - {self.product.product_name}'
 
 class ReviewRating(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)

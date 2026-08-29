@@ -37,7 +37,7 @@
                                         <li><strong>Order:</strong> #{{ order.order_number }}</li>
                                         <li><strong>Transaction:</strong> {{ order.payment.payment_id }}</li>
                                         <li><strong>Order Date:</strong> {{ order.created_at|date:"F j, Y, g:i A" }}</li>
-                                        <li><strong>Status:</strong> {{ order.payment.status|capfirst }}</li>
+                                        <li><strong>Status:</strong> {{ order.status }} / {{ order.payment.status|capfirst }}</li>
                                     </ul>
                                 </div>
                             </div>
@@ -64,29 +64,41 @@
                                                     {% endfor %}
                                                 </td>
                                                 <td class="text-center">{{ item.quantity }}</td>
-                                                <td class="text-center">${{ item.subtotal|floatformat:2 }} USD</td>
+                                                <td class="text-center">₹{{ item.subtotal|floatformat:2 }}</td>
                                             </tr>
                                             {% endfor %}
                                         </tbody>
                                         <tfoot>
                                             <tr>
                                                 <th colspan="2" class="text-right">Sub Total:</th>
-                                                <th class="text-center">${{ sub_total|floatformat:2 }} USD</th>
+                                                <th class="text-center">₹{{ sub_total|floatformat:2 }}</th>
                                             </tr>
+                                            {% if order.discount %}
+                                            <tr>
+                                                <th colspan="2" class="text-right">Discount:</th>
+                                                <th class="text-center">-₹{{ order.discount|floatformat:2 }}</th>
+                                            </tr>
+                                            {% endif %}
                                             <tr>
                                                 <th colspan="2" class="text-right">Tax:</th>
-                                                <th class="text-center">${{ order.tax|floatformat:2 }} USD</th>
+                                                <th class="text-center">₹{{ order.tax|floatformat:2 }}</th>
                                             </tr>
                                             
                                             <tr>
                                                 <th colspan="2" class="text-right">Grand Total:</th>
-                                                <th class="text-center">${{ order.order_total|floatformat:2 }} USD</th>
+                                                <th class="text-center">₹{{ order.order_total|floatformat:2 }}</th>
                                             </tr>
                                         </tfoot>
                                     </table>
                                 </div>
                             </div>
                             <div class="invoice-footer mt25">
+                                {% if can_cancel %}
+                                <form method="post" action="{% url 'cancel_order' order.order_number %}" class="text-center mb-3">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Cancel this order? Card payments will be refunded.');">Cancel order</button>
+                                </form>
+                                {% endif %}
                                 <p class="text-center">Thank you for shopping with us!</p>
                             </div>
                         </div>

@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+
+<section class="section-conten padding-y bg">
+{% include 'includes/alerts.html' %}
+<div class="container">
+	<div class="row">
+		{% include 'includes/dashboard-sidebar.html' %}
+	<main class="col-md-9">
+		<article class="card">
+		<header class="card-header">
+			<strong class="d-inline-block mr-3">Wishlist</strong>
+		</header>
+            <div class="card-body">
+                {% if wishlist_items %}
+                <div class="row">
+                    {% for item in wishlist_items %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            {% if item.product.get_primary_image %}
+                            <a href="{{ item.product.get_url }}"><img src="{{ item.product.get_primary_image.url }}" class="card-img-top" alt="{{ item.product.product_name }}"></a>
+                            {% endif %}
+                            <div class="card-body">
+                                <h6><a href="{{ item.product.get_url }}">{{ item.product.product_name }}</a></h6>
+                                <p class="mb-2">₹{{ item.product.price }}</p>
+                                <a href="{{ item.product.get_url }}" class="btn btn-sm btn-primary">View</a>
+                                <a href="{% url 'remove_from_wishlist' item.product.id %}?next={% url 'wishlist' %}" class="btn btn-sm btn-outline-danger">Remove</a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Your wishlist is empty.</p>
+                {% endif %}
+		    </div>
+		</article>
+	</main>
+</div>
+</div>
+</section>
+
+{% endblock %}

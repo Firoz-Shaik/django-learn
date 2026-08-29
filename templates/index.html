@@ -31,17 +31,14 @@
 			<a href="{{ product.get_url }}" class="img-wrap">{% if product.get_primary_image %}<img src="{{ product.get_primary_image.url }}" alt="{{ product.product_name }}">{% endif %}</a>
 			<figcaption class="info-wrap">
 				<a href="{{ product.get_url }}" class="title">{{ product.product_name }}</a>
-				<div class="price mt-1">${{ product.price }}</div> <!-- price-wrap.// -->
+				<div class="price mt-1">₹{{ product.price }}</div>
 			</figcaption>
 		</div>
-	</div> <!-- col.// -->
+	</div>
 	{% endfor %}
-</div> <!-- row.// -->
+</div>
 
-</div><!-- container // -->
+</div>
 </section>
-<!-- ========================= SECTION  END// ========================= -->
 
-</body>
-</html>
 {% endblock %}

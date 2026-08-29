@@ -35,7 +35,7 @@
 							<span class="text-muted small">{{ variation.variation_category|capfirst }}: {{ variation.variation_value|capfirst }}</span>{% if not forloop.last %}, {% endif %}
 						{% endfor %}
 					</div>
-					<strong>$ {{ item.sub_total }}</strong>
+					<strong>₹{{ item.sub_total }}</strong>
 				</div>
 				{% empty %}
 					<p class="text-muted mb-0">Your cart is empty.</p>
@@ -75,10 +75,13 @@
 
 		<div class="card">
 			<div class="card-body">
-				<dl class="dlist-align"><dt>Subtotal:</dt><dd class="text-right">$ {{ total|floatformat:2 }}</dd></dl>
-				<dl class="dlist-align"><dt>Tax:</dt><dd class="text-right">$ {{ tax|floatformat:2 }}</dd></dl>
+				<dl class="dlist-align"><dt>Subtotal:</dt><dd class="text-right">₹{{ total|floatformat:2 }}</dd></dl>
+				{% if discount %}
+				<dl class="dlist-align"><dt>Discount:</dt><dd class="text-right">- ₹{{ discount|floatformat:2 }}</dd></dl>
+				{% endif %}
+				<dl class="dlist-align"><dt>Tax:</dt><dd class="text-right">₹{{ tax|floatformat:2 }}</dd></dl>
 				<hr>
-				<dl class="dlist-align"><dt><strong>Total:</strong></dt><dd class="text-right text-dark"><strong>$ {{ grand_total|floatformat:2 }}</strong></dd></dl>
+				<dl class="dlist-align"><dt><strong>Total:</strong></dt><dd class="text-right text-dark"><strong>₹{{ grand_total|floatformat:2 }}</strong></dd></dl>
 				<button type="submit" class="btn btn-primary btn-block mt-3" id="submit-payment"><span id="submit-payment-label">Make payment</span></button>
 				{% if not stripe_publishable_key %}<small class="text-danger d-block mt-2">Stripe is not configured. Add STRIPE_PUBLISHABLE_KEY to the environment.</small>{% endif %}
 				<a href="{% url 'checkout' %}" class="btn btn-light btn-block">Back to billing</a>
